@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>IDS Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0d0d0d; color: #00ff00; font-family: monospace; padding: 20px; }
+        h1 { color: #00ff00; text-align: center; padding: 20px; font-size: 28px; border-bottom: 1px solid #00ff00; }
+        
+        .stats { display: flex; justify-content: center; gap: 30px; margin: 20px 0; }
+        .stat-box { background: #1a1a1a; border: 1px solid #00ff00; padding: 20px 40px; text-align: center; border-radius: 5px; }
+        .stat-box h2 { font-size: 40px; color: #ff4444; }
+        .stat-box p { color: #00ff00; font-size: 14px; }
+
+        .charts { display: flex; gap: 20px; margin: 20px 0; }
+        .chart-box { background: #1a1a1a; border: 1px solid #333; padding: 20px; border-radius: 5px; flex: 1; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th { background: #1a1a1a; padding: 12px; border: 1px solid #00ff00; color: #00ff00; }
+        td { padding: 10px; border: 1px solid #222; font-size: 13px; }
+        tr:hover { background: #1a1a1a; }
+        .port-scan { color: #ff4444; }
+        .dos { color: #ff8800; }
+        .syn { color: #ff00ff; }
+        .udp { color: #00ffff; }
+
+        .status { text-align: center; margin: 10px; font-size: 13px; color: #555; }
+    </style>
+</head>
+<body>
+    <h1>Network Intrusion Detection System</h1>
+
+    <div class="stats">
+        <div class="stat-box">
+            <h2 id="total">0</h2>
+            <p>Total Alerts</p>
+        </div>
+        <div class="stat-box">
+            <h2 id="portscan">0</h2>
+            <p>Port Scans</p>
+        </div>
+        <div class="stat-box">
+            <h2 id="dos">0</h2>
+            <p>DoS Attacks</p>
+        </div>
+        <div class="stat-box">
+            <h2 id="syn">0</h2>
+            <p>SYN Floods</p>
+        </div>
+        <div class="stat-box">
+            <h2 id="udp">0</h2>
+            <p>UDP Floods</p>
+        </div>
+    </div>
+
+    <div class="charts">
+        <div class="chart-box">
+            <canvas id="typeChart"></canvas>
+        </div>
+        <div class="chart-box">
+            <canvas id="ipChart"></canvas>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Alert</th>
+            </tr>
+        </thead>
+        <tbody id="alerts-table"></tbody>
+    </table>
+
+    <div class="status" id="status">Refreshing every 3 seconds...</div>
+
+    <script>
+        let typeChart, ipChart;
+
+        function initCharts() {
+            typeChart = new Chart(document.getElementById('typeChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Port Scan', 'DoS Attack', 'SYN Flood', 'UDP Flood'],
+                    datasets: [{
+                        data: [0, 0, 0, 0],
+                        backgroundColor: ['#ff4444', '#ff8800', '#ff00ff', '#00ffff']
+                    }]
+                },
+                options: {
+                    plugins: {
+                        legend: { labels: { color: '#00ff00' } },
+                        title: { display: true, text: 'Attack Types', color: '#00ff00' }
+                    }
+                }
+            });
+
+            ipChart = new Chart(document.getElementById('ipChart'), {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Alerts by IP',
+                        data: [],
+                        backgroundColor: '#ff4444'
+                    }]
+                },
+                options: {
+                    plugins: {
+                        legend: { labels: { color: '#00ff00' } },
+                        title: { display: true, text: 'Top Attacker IPs', color: '#00ff00' }
+                    },
+                    scales: {
+                        x: { ticks: { color: '#00ff00' } },
+                        y: { ticks: { color: '#00ff00' } }
+                    }
+                }
+            });
+        }
+
+        function getClass(msg) {
+            if (msg.includes('PORT SCAN')) return 'port-scan';
+            if (msg.includes('DoS')) return 'dos';
+            if (msg.includes('SYN')) return 'syn';
+            if (msg.includes('UDP')) return 'udp';
+            return '';
+        }
+
+        function loadAlerts() {
+            fetch('/alerts')
+                .then(res => res.json())
+                .then(data => {
+                    let portScans = 0, dosAttacks = 0, synFloods = 0, udpFloods = 0;
+                    let ipCount = {};
+                    let html = '';
+
+                    data.reverse().forEach(alert => {
+                        if (alert.message.includes('PORT SCAN')) portScans++;
+                        if (alert.message.includes('DoS')) dosAttacks++;
+                        if (alert.message.includes('SYN FLOOD')) synFloods++;
+                        if (alert.message.includes('UDP FLOOD')) udpFloods++;
+
+                        let ip = alert.message.match(/\d+\.\d+\.\d+\.\d+/);
+                        if (ip) ipCount[ip[0]] = (ipCount[ip[0]] || 0) + 1;
+
+                        let cls = getClass(alert.message);
+                        html += `<tr>
+                            <td>${alert.time}</td>
+                            <td class="${cls}">${alert.message}</td>
+                        </tr>`;
+                    });
+
+                    document.getElementById('total').innerText = data.length;
+                    document.getElementById('portscan').innerText = portScans;
+                    document.getElementById('dos').innerText = dosAttacks;
+                    document.getElementById('syn').innerText = synFloods;
+                    document.getElementById('udp').innerText = udpFloods;
+                    document.getElementById('status').innerText = 'Last updated: ' + new Date().toLocaleTimeString();
+
+                    typeChart.data.datasets[0].data = [portScans, dosAttacks, synFloods, udpFloods];
+                    typeChart.update();
+
+                    let topIPs = Object.entries(ipCount).sort((a,b) => b[1]-a[1]).slice(0,5);
+                    ipChart.data.labels = topIPs.map(x => x[0]);
+                    ipChart.data.datasets[0].data = topIPs.map(x => x[1]);
+                    ipChart.update();
+
+                    document.getElementById('alerts-table').innerHTML = html;
+                });
+        }
+
+        initCharts();
+        loadAlerts();
+        setInterval(loadAlerts, 3000);
+    </script>
+</body>
+</html>
